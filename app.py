@@ -1,7 +1,6 @@
 #----------------------------------------------------------------------------#
 # Imports
 #----------------------------------------------------------------------------#
-
 from enum import unique
 import json
 import sys
@@ -15,87 +14,16 @@ from logging import Formatter, FileHandler
 from flask_wtf import Form
 from forms import *
 
+
+from flask_script import Manager
+from flask_migrate import Migrate, MigrateCommand
+
 from flask_wtf.csrf import CSRFProtect,  CSRFError
 
-from flask_migrate import Migrate, MigrateCommand
-#----------------------------------------------------------------------------#
-# App Config.
-#----------------------------------------------------------------------------#
-
-app = Flask(__name__)
-
-# Enable CSRF protection globally for a Flask app.
-csrf = CSRFProtect(app)
-
-moment = Moment(app)
-app.config.from_object('config')
-db = SQLAlchemy(app)
-
-# (*) TODO: connect to a local postgresql database
-migrate = Migrate(app, db) #Initializing migrate
-
-#----------------------------------------------------------------------------#
-# Models.
-#----------------------------------------------------------------------------#
-
-class Venue(db.Model):
-    __tablename__ = 'venue'
-
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String)
-    genres = db.Column(db.String, nullable=False)
-    city = db.Column(db.String(120))
-    state = db.Column(db.String(120))
-    address = db.Column(db.String(120))
-    phone = db.Column(db.String(120))
-    website = db.Column(db.String(120))
-    facebook_link = db.Column(db.String(120))
-    seeking_talent = db.Column(db.Boolean, nullable=False, default=False)
-    seeking_description = db.Column(db.String(500))
-    image_link = db.Column(db.String(500))
-  #  past_shows =  db.Column(db.String, nullable=False, default=False)
-    shows = db.relationship("Show", backref="venues", lazy=False, cascade="all, delete-orphan")
-    past_shows_count = db.Column(db.Integer)
-    upcoming_shows_count = db.Column(db.Integer)
-
-    def __repr__(self):
-        return f"<Venue id={self.id} name={self.name} city={self.city} state={self.city} address={self.address} phone={self.phone} genres={self.genres} facebook_link={self.facebook_link} website={self.website} seeking_talent={self.seeking_talent} seeking_description={self.seeking_description}> \n"
-
-    # (*) TODO: implement any missing fields, as a database migration using Flask-Migrate
+#Models
+from models import *
 
 
-class Artist(db.Model):
-    __tablename__ = 'artist'
-
-    id = db.Column(db.Integer, primary_key=True, unique=True)
-    name = db.Column(db.String, nullable=False)
-    genres = db.Column(db.String(120), nullable=False)
-    city = db.Column(db.String(120), nullable=False)
-    state = db.Column(db.String(120), nullable=False)
-    phone = db.Column(db.String(120), nullable=False)
-    website = db.Column(db.String(120))
-    facebook_link = db.Column(db.String(120))
-    seeking_venue = db.Column(db.Boolean, nullable=False, default=False)
-    seeking_description = db.Column(db.String(500))
-    image_link = db.Column(db.String(500), nullable=False)
-    shows = db.relationship("Show", backref="artists", lazy=False, cascade="all, delete-orphan")
-
-    # (*) TODO: implement any missing fields, as a database migration using Flask-Migrate
-"""  
-    def __repr__(self):
-        return f"<Artist id={self.id} name={self.name} genres={self.genres} city={self.city} state={self.city} phone={self.phone} website={self.address} facebook_link={self.facebook_link} seeking_description={self.seeking_description} image_link={self.image_link}> \n"
-   """  
-# (*) TODO Implement Show and Artist models, and complete all model relationships and properties, as a database migration.
-class Show(db.Model):
-    __tablename__ = "show"
-
-    id = db.Column(db.Integer, primary_key=True)
-    artist_id = db.Column(db.Integer, db.ForeignKey("artist.id"), nullable=False)
-    venue_id = db.Column(db.Integer, db.ForeignKey("venue.id"), nullable=False)
-    start_time = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
-
-    def __repr__(self):
-        return f"<Show id={self.id} artist_id={self.artist_id} venue_id={self.venue_id} artist_image_link={self.artist_image_link} start_time={self.start_time}> \n"
 
 
 #----------------------------------------------------------------------------#
@@ -103,7 +31,12 @@ class Show(db.Model):
 #----------------------------------------------------------------------------#
 
 def format_datetime(value, format='medium'):
-  date = dateutil.parser.parse(value)
+  if isinstance(value, str):
+      date = dateutil.parser.parse(value)
+  else:
+    #alter the formatting filter to accept datetime values
+      date = value  
+
   if format == 'full':
       format="EEEE MMMM, d, y 'at' h:mma"
   elif format == 'medium':
@@ -120,6 +53,7 @@ app.jinja_env.filters['datetime'] = format_datetime
 def index():
   return render_template('pages/home.html')
 
+#
 
 #  Venues
 #  ----------------------------------------------------------------
@@ -181,27 +115,42 @@ def search_venues():
 def show_venue(venue_id):
   # shows the venue page with the given venue_id
   # (*) TODO: replace with real venue data from the venues table, using venue_id
-
-  venue = Venue.query.get(venue_id)
   
-  #Sorting out shows into upcoming and past shows
+  venue = Venue.query.get(venue_id)
+
+  # Filtering and saving Past shows and Upcoming shows 
+  #Past shows
+  past_shows_query = db.session.query(Show).join(Venue).filter(Show.venue_id==venue_id).filter(Show.start_time>datetime.now())
   past_shows = []
+
+  #Storing shows data from query as venue objects
+  for show in past_shows_query:
+    past_show = {
+      "artist_id": show.artists.id,
+      "artist_name":   show.artists.name,
+      "artist_image_link": show.artists.image_link,
+      "start_time": show.start_time.strftime("%m/%d/%Y, %H:%M:%S")
+    }
+    past_shows.append(past_show)
+  #Upcoming shows
+  upcoming_shows_query = db.session.query(Show).join(Venue).filter(Show.venue_id==venue_id).filter(Show.start_time<datetime.now())
   upcoming_shows = []
 
-  for show in venue.shows:
-        temp = {}
-        temp["artist_name"] = show.artists.name
-        temp["artist_id"] = show.artists.id
-        temp["artist_image_link"] = show.artists.image_link
-        temp["start_time"] = show.start_time.strftime("%m/%d/%Y, %H:%M:%S")
-        
-        if show.start_time <= datetime.now():
-          past_shows.append(temp)
-        else:
-          upcoming_shows.append(temp) 
+  #Storing shows data from query as venue objects
+  for show in upcoming_shows_query:
+    upcoming_show = {
+      "artist_id": show.artists.id,
+      "artist_name":   show.artists.name,
+      "artist_image_link": show.artists.image_link,
+      "start_time": show.start_time.strftime("%m/%d/%Y, %H:%M:%S")
+    }
+    upcoming_shows.append(upcoming_show)
 
+  #Setting attributes for template  
+  setattr(venue,"past_shows", past_shows)
   setattr(venue,"past_shows_count", len(past_shows))
-  setattr(venue,"upcoming_shows_count", len(past_shows))
+  setattr(venue,"upcoming_shows", upcoming_shows)
+  setattr(venue,"upcoming_shows_count", len(upcoming_shows))  
   setattr(venue, "genres", venue.genres.split(",")) # seperating genres into list
 
   return render_template('pages/show_venue.html', venue=venue)
@@ -321,32 +270,49 @@ def search_artists():
 
 @app.route('/artists/<int:artist_id>')
 def show_artist(artist_id):
-  # shows the artist page with the given artist_id
-  # (*) TODO: replace with real artist data from the artist table, using artist_id
-  artist = Artist.query.get(artist_id)
-  
-  #Sorting out shows into upcoming and past shows
-  past_shows = []
-  upcoming_shows = []
+    # shows the artist page with the given artist_id
+    # (*) TODO: replace with real artist data from the artist table, using artist_id
 
-  for show in artist.shows:
-        temp = {}
-        temp["venue_name"] = show.venues.name
-        temp["venue_id"] = show.venues.id
-        temp["venue_image_link"] = show.venues.image_link
-        temp["start_time"] = show.start_time.strftime("%m/%d/%Y, %H:%M:%S")
+    artist = Artist.query.get(artist_id)
 
-        if show.start_time <= datetime.now():
-          past_shows.append(temp)
-        else:
-          upcoming_shows.append(temp) 
+    # Filtering and saving Past shows and Upcoming shows 
+    #Past shows
+    past_shows_query = db.session.query(Show).join(Venue).filter(Show.artist_id==artist_id).filter(Show.start_time>datetime.now())
+    past_shows = []
 
-  setattr(artist,"past_shows_count", len(past_shows))
-  setattr(artist,"upcoming_shows_count", len(past_shows))
-  setattr(artist, "genres", artist.genres.split(",")) # seperating genres into list
+    #Storing shows data from query as venue objects
+    for show in past_shows_query:
+      past_show = {
+        "venue_id": show.venues.id,
+        "venue_name":   show.venues.name,
+        "venue_image_link": show.venues.image_link,
+        "start_time": show.start_time.strftime("%m/%d/%Y, %H:%M:%S")
+      }
+      past_shows.append(past_show)
+    #Upcoming shows
+    upcoming_shows_query = db.session.query(Show).join(Venue).filter(Show.artist_id==artist_id).filter(Show.start_time<datetime.now())
+    upcoming_shows = []
 
-  return render_template('pages/show_artist.html', artist=artist)  
-  
+    #Storing shows data from query as venue objects
+    for show in upcoming_shows_query:
+      upcoming_show = {
+        "venue_id": show.venues.id,
+        "venue_name":   show.venues.name,
+        "venue_image_link": show.venues.image_link,
+        "start_time": show.start_time.strftime("%m/%d/%Y, %H:%M:%S")
+      }
+      upcoming_shows.append(upcoming_show)
+
+    #Setting attributes for template
+    setattr(artist,"past_shows_count", len(past_shows))
+    setattr(artist,"past_shows", past_shows)    
+    setattr(artist,"upcoming_shows_count", len(upcoming_shows))
+    setattr(artist,"upcoming_shows", upcoming_shows)
+    setattr(artist, "genres", artist.genres.split(",")) 
+
+    return render_template('pages/show_artist.html', artist=artist)
+
+
 #  Update
 #  ----------------------------------------------------------------
 @app.route('/artists/<int:artist_id>/edit', methods=['GET'])
@@ -551,6 +517,7 @@ def create_show_submission():
 
   return render_template('pages/home.html')
 
+#To get rid of CSRF error on form submissions.
 @app.errorhandler(CSRFError)
 def handle_csrf_error(e):
   return render_template('csrf_error.html',reason=e.description), 400
