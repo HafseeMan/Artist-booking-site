@@ -113,10 +113,24 @@
     </div>
   </div>
 
+  <script>
+    /*Adding delete functionality*/
+    const deleteBtns = document.querySelectorAll('.delete-button');
+    for (let i = 0; i < deleteBtns.length; i++) {
+      var btn = deleteBtns[i];
+
+      btn.onclick = function(e) {
+        const item_targeted = e.target.dataset['id'];
+        fetch('/venues/' + item_targeted, {
+          method: 'DELETE'
+        });
+      }
+      
+    }
+  </script>  
   <script type="text/javascript" src="//ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
   <script>window.jQuery || document.write('<script type="text/javascript" src="/static/js/libs/jquery-1.11.1.min.js"><\/script>')</script>
   <script type="text/javascript" src="/static/js/libs/bootstrap-3.1.1.min.js" defer></script>
   <script type="text/javascript" src="/static/js/plugins.js" defer></script>
-
 </body>
 </html>
